@@ -1,0 +1,239 @@
+{
+    "name": "WordPress Embed Assistant",
+    "conversation_config": {
+        "asr": {
+            "quality": "high",
+            "provider": "elevenlabs",
+            "user_input_audio_format": "pcm_16000",
+            "keywords": []
+        },
+        "turn": {
+            "turn_timeout": 7,
+            "silence_end_call_timeout": -1,
+            "soft_timeout_config": {
+                "timeout_seconds": -1,
+                "message": "Hhmmmm...yeah.",
+                "use_llm_generated_message": false
+            },
+            "mode": "turn",
+            "turn_eagerness": "normal",
+            "spelling_patience": "auto",
+            "speculative_turn": false,
+            "turn_model": "turn_v2"
+        },
+        "tts": {
+            "model_id": "eleven_flash_v2",
+            "voice_id": "cjVigY5qzO86Huf0OWal",
+            "supported_voices": [],
+            "expressive_mode": false,
+            "suggested_audio_tags": [],
+            "agent_output_audio_format": "pcm_16000",
+            "optimize_streaming_latency": 3,
+            "stability": 0.5,
+            "speed": 1,
+            "similarity_boost": 0.8,
+            "text_normalisation_type": "system_prompt",
+            "pronunciation_dictionary_locators": []
+        },
+        "conversation": {
+            "text_only": false,
+            "max_duration_seconds": 600,
+            "client_events": [
+                "audio",
+                "interruption",
+                "user_transcript",
+                "agent_response",
+                "agent_response_correction"
+            ],
+            "file_input": {
+                "enabled": true,
+                "max_files_per_conversation": 10
+            },
+            "monitoring_enabled": false,
+            "monitoring_events": [
+                "user_transcript",
+                "agent_response",
+                "agent_response_correction"
+            ],
+            "dtmf_input_settings": null
+        },
+        "language_presets": {},
+        "vad": {
+            "background_voice_detection": false
+        },
+        "agent": {
+            "first_message": "Hey! I can get you a moving estimate, show you our services, or answer questions. What are you looking for?",
+            "language": "en",
+            "hinglish_mode": false,
+            "dynamic_variables": {
+                "dynamicVariablePlaceholders": {
+                    "is_resumed": "false",
+                    "current_page": "/"
+                }
+            },
+            "disable_first_message_interruptions": false,
+            "max_conversation_duration_message": "",
+            "prompt": {
+                "prompt": "You are an energetic, helpful voice agent for a moving company. You help visitors get a moving estimate, learn about services, apply for jobs, or inquire about franchise opportunities.\n\n## Voice\n- Keep responses under 2 sentences.\n- Sound warm, quick, a little playful — you're on a phone call, not writing an essay.\n- Never read URLs or code aloud.\n\n## Pages\n- `/` home\n- `/about` who we are\n- `/services` what we do\n- `/estimate` get an estimate (form)\n- `/contact` contact info\n\n## Tool use (mandatory, aggressive)\n- ALWAYS call tools. NEVER just talk about what you would do.\n- When the user shares any estimate detail (name, email, phone, origin, destination, move date, home size, special items) — immediately call `updateEstimateField`. Do not wait for them to finish.\n- When the user confirms submission — call `submitEstimate`.\n\n## navigateTo — MUST BE SILENT\nWhen the user explicitly asks to go to another page (estimate, services, contact, etc.), call `navigateTo` **silently**:\n- DO NOT speak before the tool call.\n- DO NOT speak after the tool call.\n- No \"alright, taking you there\", no \"let me pull that up\", no commentary at all.\n- Just call navigateTo. That's it. Silence.\n\nThe browser will hard-reload. The next thing the user hears is your response on the new page, which is set for you (first_message override).\n\nDO NOT call navigateTo if:\n- The user hasn't asked to go somewhere — `navigateTo` is ONLY for explicit navigation requests.\n- The user is already on the page they asked for (see PRIOR CONVERSATION breadcrumbs).\n- `{{is_resumed}}` is `\"true\"` — see absolute no-loop rule below.\n\n## Continuity\nThe app is a multi-page site. Every `navigateTo` hard-reloads the page → fresh WebSocket. The transcript from before the reload is injected into this prompt under \"PRIOR CONVERSATION\". Dynamic variables carry structured facts (`{{current_page}}`, `{{is_resumed}}`, and captured fields).\n\nOn resume, your first line is provided via first_message — just continue naturally from there. Don't greet. Don't apologize. Don't announce the reload. Act like no reload happened.\n\n### Reading the PRIOR CONVERSATION breadcrumbs\nThe PRIOR CONVERSATION may contain synthetic agent entries like `Agent: [navigated silently to /estimate]`. Those are NOT speech — they're breadcrumbs telling you that you already navigated there. If you see one, the user is ALREADY ON that page. DO NOT call navigateTo to the same destination again. Just respond to whatever the user said most recently.\n\n### Absolute no-loop rule\nIf `{{is_resumed}}` is `\"true\"`, you just arrived on `{{current_page}}`. Do not call `navigateTo` on this turn. Respond with speech only. If the user then explicitly asks to go somewhere different, you can navigate on the next turn.\n\n## Style reminders\n- Short. Warm. Forward-moving. Always toward the next useful action.",
+                "llm": "gpt-5.2",
+                "temperature": 0.3,
+                "max_tokens": -1,
+                "tool_ids": [
+                    "tool_6401kp2pstj3ewgrwapyte9vx6fe",
+                    "tool_2701kp2pstz7farrvtr9n29h4ynw",
+                    "tool_1001kp2psv8pfhnr0rn6evvr706p"
+                ],
+                "built_in_tools": {
+                    "update_state": null,
+                    "memory_entry_search": null,
+                    "memory_entry_create": null,
+                    "memory_entry_update": null,
+                    "memory_entry_delete": null,
+                    "agent_prompt_change": null,
+                    "procedure_update": null,
+                    "transfer_to_genesys_chat": null,
+                    "search_documentation": null
+                },
+                "enable_parallel_tool_calls": true,
+                "mcp_server_ids": [],
+                "native_mcp_server_ids": [],
+                "knowledge_base": [],
+                "ignore_default_personality": false,
+                "rag": {
+                    "enabled": false,
+                    "embedding_model": "e5_mistral_7b_instruct",
+                    "max_vector_distance": 0.6,
+                    "max_documents_length": 50000,
+                    "max_retrieved_rag_chunks_count": 20
+                },
+                "backup_llm_config": {
+                    "preference": "default"
+                },
+                "cascade_timeout_seconds": 8,
+                "tools": []
+            }
+        }
+    },
+    "platform_settings": {
+        "evaluation": { "criteria": [] },
+        "widget": {
+            "variant": "full",
+            "placement": "bottom-right",
+            "expandable": "never",
+            "avatar": { "type": "orb", "color1": "#2792dc", "color2": "#9ce6e6" },
+            "feedback_mode": "during",
+            "end_feedback": { "type": "rating" },
+            "bg_color": "#ffffff",
+            "text_color": "#000000",
+            "btn_color": "#000000",
+            "btn_text_color": "#ffffff",
+            "border_color": "#e1e1e1",
+            "focus_color": "#000000",
+            "shareable_page_show_terms": true,
+            "show_avatar_when_collapsed": false,
+            "disable_banner": false,
+            "markdown_link_allowed_hosts": [],
+            "markdown_link_include_www": true,
+            "markdown_link_allow_http": true,
+            "mic_muting_enabled": false,
+            "transcript_enabled": false,
+            "text_input_enabled": true,
+            "conversation_mode_toggle_enabled": false,
+            "default_expanded": false,
+            "always_expanded": false,
+            "dismissible": false,
+            "show_agent_status": false,
+            "show_conversation_id": true,
+            "strip_audio_tags": true,
+            "text_contents": {},
+            "styles": {},
+            "language_selector": false,
+            "supports_text_only": true,
+            "language_presets": {}
+        },
+        "data_collection": {},
+        "data_collection_scopes": {},
+        "overrides": {
+            "conversation_config_override": {
+                "turn": {
+                    "soft_timeout_config": { "message": false }
+                },
+                "tts": {
+                    "voice_id": false,
+                    "stability": false,
+                    "speed": false,
+                    "similarity_boost": false
+                },
+                "conversation": { "text_only": true },
+                "agent": {
+                    "first_message": true,
+                    "language": false,
+                    "max_conversation_duration_message": false,
+                    "prompt": {
+                        "prompt": true,
+                        "llm": false,
+                        "tool_ids": false,
+                        "native_mcp_server_ids": false,
+                        "knowledge_base": false
+                    }
+                }
+            },
+            "custom_llm_extra_body": false,
+            "enable_conversation_initiation_client_data_from_webhook": false
+        },
+        "workspace_overrides": {
+            "webhooks": { "events": ["transcript"] }
+        },
+        "testing": {
+            "attached_tests": [
+                { "test_id": "test_7901kp2s663revdt2dpx19bs5gpt" },
+                { "test_id": "test_9401kp2s66dqenfaw2d9v6dgfpd2" },
+                { "test_id": "test_3001kp2s66qvf0y8f6fa68tqg7a7" },
+                { "test_id": "test_9001kp2s676be3vaym2hxjxv790t" }
+            ],
+            "referenced_tests_ids": []
+        },
+        "archived": false,
+        "guardrails": {
+            "version": "1",
+            "focus": { "is_enabled": false },
+            "prompt_injection": { "is_enabled": false },
+            "content": {
+                "execution_mode": "streaming",
+                "config": {
+                    "sexual": { "is_enabled": false, "threshold": "medium" },
+                    "violence": { "is_enabled": false, "threshold": "medium" },
+                    "harassment": { "is_enabled": false, "threshold": "medium" },
+                    "self_harm": { "is_enabled": false, "threshold": "medium" },
+                    "profanity": { "is_enabled": false, "threshold": "medium" },
+                    "religion_or_politics": { "is_enabled": false, "threshold": "medium" },
+                    "medical_and_legal_information": { "is_enabled": false, "threshold": "medium" }
+                },
+                "trigger_action": { "type": "end_call" }
+            },
+            "moderation": null,
+            "custom": { "config": { "configs": [] } }
+        },
+        "auth": { "enable_auth": false, "allowlist": [], "require_origin_header": false },
+        "call_limits": { "agent_concurrency_limit": -1, "daily_limit": 100000, "bursting_enabled": true },
+        "ban": null,
+        "privacy": {
+            "record_voice": true,
+            "retention_days": -1,
+            "delete_transcript_and_pii": false,
+            "delete_audio": false,
+            "apply_to_existing_conversations": false,
+            "zero_retention_mode": false,
+            "conversation_history_redaction": { "enabled": false, "entities": [] }
+        },
+        "safety": { "is_blocked_ivc": false, "is_blocked_non_ivc": false, "ignore_safety_evaluation": false }
+    },
+    "tags": [],
+    "workflow": {
+        "edges": {},
+        "nodes": {
+            "start_node": { "type": "start", "position": { "x": 0, "y": 0 }, "edge_order": [] }
+        },
+        "prevent_subagent_loops": false
+    }
+}

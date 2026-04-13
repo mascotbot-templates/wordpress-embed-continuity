@@ -1,0 +1,20 @@
+{
+    "type": "client",
+    "name": "submitEstimate",
+    "description": "Submit the completed moving estimate form. Use this after the user has provided enough details and confirmed they want to submit. Returns a confirmation message.",
+    "response_timeout_secs": 5,
+    "disable_interruptions": false,
+    "force_pre_tool_speech": false,
+    "assignments": [],
+    "tool_call_sound_behavior": "auto",
+    "tool_error_handling_mode": "auto",
+    "parameters": {
+        "type": "object",
+        "required": [],
+        "description": "",
+        "properties": {}
+    },
+    "expects_response": true,
+    "dynamic_variables": { "dynamicVariablePlaceholders": {} },
+    "execution_mode": "immediate"
+}

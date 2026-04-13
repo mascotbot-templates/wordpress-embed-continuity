@@ -1,0 +1,17 @@
+{
+  "name": "wordpress-embed-continuity",
+  "version": "1.0.0",
+  "description": "Embeddable MascotBot voice widget with conversation continuity across full page reloads, plus a WordPress-simulating demo site.",
+  "private": true,
+  "scripts": {
+    "install:all": "pnpm -C widget install && pnpm -C demo-site install",
+    "dev": "concurrently -n widget,demo -c cyan,magenta \"pnpm -C widget dev\" \"pnpm -C demo-site dev\"",
+    "dev:widget": "pnpm -C widget dev",
+    "dev:demo": "pnpm -C demo-site dev",
+    "build": "pnpm -C widget build && pnpm -C demo-site build",
+    "typecheck": "pnpm -C widget typecheck && pnpm -C demo-site typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

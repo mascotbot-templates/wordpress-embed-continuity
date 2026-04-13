@@ -1,0 +1,28 @@
+{
+    "tests": [
+        {
+            "config": "test_configs/Navigate-silently-on-estimate-request.json",
+            "type": "tool",
+            "id": "test_7901kp2s663revdt2dpx19bs5gpt",
+            "agent_id": "agent_5801kp2pvawheya84jps4v7j3wkz"
+        },
+        {
+            "config": "test_configs/Navigate-silently-on-contact-request.json",
+            "type": "tool",
+            "id": "test_9401kp2s66dqenfaw2d9v6dgfpd2",
+            "agent_id": "agent_5801kp2pvawheya84jps4v7j3wkz"
+        },
+        {
+            "config": "test_configs/Update-fields-when-user-gives-details.json",
+            "type": "tool",
+            "id": "test_3001kp2s66qvf0y8f6fa68tqg7a7",
+            "agent_id": "agent_5801kp2pvawheya84jps4v7j3wkz"
+        },
+        {
+            "config": "test_configs/No-nav-loop-when-already-on-page.json",
+            "type": "tool",
+            "id": "test_9001kp2s676be3vaym2hxjxv790t",
+            "agent_id": "agent_5801kp2pvawheya84jps4v7j3wkz"
+        }
+    ]
+}

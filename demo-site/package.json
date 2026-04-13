@@ -1,0 +1,26 @@
+{
+  "name": "demo-site",
+  "version": "1.0.0",
+  "description": "WordPress-simulating multi-page demo site that embeds the widget via <script> tag. All navigation uses real <a href> links (hard reloads) to mirror WP behavior.",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack --port 3005",
+    "build": "next build",
+    "start": "next start --port 3005",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "16.1.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,35 @@
+{
+    "type": "client",
+    "name": "updateEstimateField",
+    "description": "Instantly update a form field on the estimate page. Fire-and-forget — call and keep talking. Call multiple times in rapid succession for different fields. Never pause or confirm after calling.",
+    "response_timeout_secs": 1,
+    "disable_interruptions": false,
+    "force_pre_tool_speech": false,
+    "assignments": [],
+    "tool_call_sound_behavior": "auto",
+    "tool_error_handling_mode": "auto",
+    "parameters": {
+        "type": "object",
+        "required": ["field", "value"],
+        "description": "",
+        "properties": {
+            "field": {
+                "type": "string",
+                "description": "Field name: name, email, phone, origin, destination, moveDate, homeSize, specialItems",
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "constant_value": ""
+            },
+            "value": {
+                "type": "string",
+                "description": "Value to set on the form field",
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "constant_value": ""
+            }
+        }
+    },
+    "expects_response": false,
+    "dynamic_variables": { "dynamicVariablePlaceholders": {} },
+    "execution_mode": "immediate"
+}

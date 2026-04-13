@@ -1,0 +1,19 @@
+{
+    "tools": [
+        {
+            "type": "client",
+            "config": "tool_configs/navigateTo.json",
+            "id": "tool_6401kp2pstj3ewgrwapyte9vx6fe"
+        },
+        {
+            "type": "client",
+            "config": "tool_configs/updateEstimateField.json",
+            "id": "tool_2701kp2pstz7farrvtr9n29h4ynw"
+        },
+        {
+            "type": "client",
+            "config": "tool_configs/submitEstimate.json",
+            "id": "tool_1001kp2psv8pfhnr0rn6evvr706p"
+        }
+    ]
+}

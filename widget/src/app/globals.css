@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background: transparent !important;
+  background-color: transparent !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+#__next {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+canvas {
+  cursor: default !important;
+  user-select: none !important;
+}
+
+.fixed > div:not([data-overlay]),
+.fixed > div:not([data-overlay]) > div,
+.fixed > div:not([data-overlay]) > div > div,
+.fixed > div:not([data-overlay]) > div > div > div {
+  height: 100% !important;
+  min-height: 100% !important;
+}
+
+.fixed canvas {
+  width: 100% !important;
+  height: 100% !important;
+}

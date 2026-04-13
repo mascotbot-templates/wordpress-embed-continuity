@@ -1,0 +1,10 @@
+{
+    "agents": [
+        {
+            "config": "agent_configs/Wordpress-Embed-Assistant.json",
+            "id": "agent_5801kp2pvawheya84jps4v7j3wkz",
+            "version_id": "",
+            "branch_id": ""
+        }
+    ]
+}

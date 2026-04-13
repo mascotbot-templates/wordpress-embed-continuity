@@ -1,0 +1,25 @@
+{
+    "name": "No nav loop when user is already on the page",
+    "chat_history": [
+        { "role": "user", "time_in_call_secs": 1, "message": "I need a moving estimate" },
+        { "role": "agent", "time_in_call_secs": 2, "message": "[navigated silently to /estimate]" },
+        { "role": "agent", "time_in_call_secs": 4, "message": "What's your name?" },
+        { "role": "user", "time_in_call_secs": 7, "message": "Hello, can you hear me?" }
+    ],
+    "success_condition": "The prior conversation shows the agent already navigated to /estimate and asked for the name. Now the user's follow-up is just 'Hello, can you hear me?' — a conversational check-in, not a new navigation request. The agent MUST NOT call navigateTo on this turn (which would cause an infinite reload loop in production). The agent should respond with a short speech turn only, such as reassuring the user it can hear them and re-asking for the name.",
+    "success_examples": [
+        { "response": "Yes, I hear you loud and clear — what's your name?", "type": "success" }
+    ],
+    "failure_examples": [
+        { "response": "", "type": "failure" }
+    ],
+    "tool_call_parameters": {
+        "parameters": [],
+        "referenced_tool": {
+            "id": "tool_6401kp2pstj3ewgrwapyte9vx6fe",
+            "type": "client"
+        },
+        "verify_absence": true
+    },
+    "type": "tool"
+}

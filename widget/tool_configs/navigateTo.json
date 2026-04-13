@@ -1,0 +1,28 @@
+{
+    "type": "client",
+    "name": "navigateTo",
+    "description": "Navigate to a page via hard reload. The conversation continues seamlessly across the reload. Fire-and-forget — call and keep talking. Pages: /, /about, /services, /estimate, /contact",
+    "response_timeout_secs": 1,
+    "disable_interruptions": false,
+    "force_pre_tool_speech": false,
+    "assignments": [],
+    "tool_call_sound_behavior": "auto",
+    "tool_error_handling_mode": "auto",
+    "parameters": {
+        "type": "object",
+        "required": ["page"],
+        "description": "",
+        "properties": {
+            "page": {
+                "type": "string",
+                "description": "Page path: /, /about, /services, /estimate, /contact",
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "constant_value": ""
+            }
+        }
+    },
+    "expects_response": false,
+    "dynamic_variables": { "dynamicVariablePlaceholders": {} },
+    "execution_mode": "immediate"
+}

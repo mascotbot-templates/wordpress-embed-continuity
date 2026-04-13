@@ -1,0 +1,27 @@
+{
+    "name": "Navigate silently on contact request",
+    "chat_history": [
+        { "role": "user", "time_in_call_secs": 1, "message": "Take me to the contact page." }
+    ],
+    "success_condition": "The agent calls the navigateTo tool with page=/contact WITHOUT speaking a narrative transition line. The agent's text response must be empty or at most a single short filler word. Absolutely no sentences like 'Sure, here's our contact page' or 'Alright, taking you there'.",
+    "success_examples": [
+        { "response": "", "type": "success" }
+    ],
+    "failure_examples": [
+        { "response": "Sure, taking you to the contact page now — what's the best number to reach you back on?", "type": "failure" }
+    ],
+    "tool_call_parameters": {
+        "parameters": [
+            {
+                "eval": { "type": "exact", "expectedValue": "/contact" },
+                "path": "page"
+            }
+        ],
+        "referenced_tool": {
+            "id": "tool_6401kp2pstj3ewgrwapyte9vx6fe",
+            "type": "client"
+        },
+        "verify_absence": false
+    },
+    "type": "tool"
+}

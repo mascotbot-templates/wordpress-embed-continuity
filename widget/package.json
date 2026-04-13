@@ -1,0 +1,32 @@
+{
+  "name": "widget",
+  "version": "1.0.0",
+  "description": "Embeddable MascotBot voice widget — Next.js app serving the iframe page, /widget.js embed script, and the signed-URL API route.",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack --port 3004",
+    "build": "next build",
+    "start": "next start --port 3004",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "setup:agent": "node scripts/setup-agent.mjs"
+  },
+  "dependencies": {
+    "@elevenlabs/react": "^0.5.0",
+    "@mascotbot-sdk/react": "file:./mascotbot-sdk-react-0.1.9.tgz",
+    "@rive-app/react-webgl2": "4.24.0",
+    "@rive-app/webgl2": "2.32.0",
+    "next": "16.1.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.9.3"
+  }
+}

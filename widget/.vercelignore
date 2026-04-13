@@ -1,0 +1,15 @@
+# Vercel-specific ignore list. Vercel normally falls back to .gitignore,
+# but our .gitignore excludes *.tgz and public/*.riv (subscription-only
+# files we don't publish to GitHub). Vercel DOES need to upload those so
+# the build can install the SDK and serve the Rive file — hence this
+# file, which overrides the fallback.
+
+node_modules
+.next
+out
+.env
+.env.local
+.env.*.local
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store

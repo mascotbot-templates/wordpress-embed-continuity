@@ -1,0 +1,27 @@
+{
+    "name": "Updates fields when user gives estimate details",
+    "chat_history": [
+        { "role": "user", "time_in_call_secs": 1, "message": "My name is Jamie and I'm moving from Chicago to Austin." }
+    ],
+    "success_condition": "The agent calls updateEstimateField at least twice — once for field=name with value containing 'Jamie', and at least once more for origin or destination. The agent must not just repeat the information back; it must invoke the tool.",
+    "success_examples": [
+        { "response": "Got it. What date are you planning to move?", "type": "success" }
+    ],
+    "failure_examples": [
+        { "response": "Great Jamie, so you're moving from Chicago to Austin. When is this happening?", "type": "failure" }
+    ],
+    "tool_call_parameters": {
+        "parameters": [
+            {
+                "eval": { "type": "exact", "expectedValue": "name" },
+                "path": "field"
+            }
+        ],
+        "referenced_tool": {
+            "id": "tool_2701kp2pstz7farrvtr9n29h4ynw",
+            "type": "client"
+        },
+        "verify_absence": false
+    },
+    "type": "tool"
+}
