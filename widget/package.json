@@ -1,10 +1,13 @@
 {
   "name": "widget",
-  "version": "1.0.0",
-  "description": "Embeddable MascotBot voice widget — Next.js app serving the iframe page, /widget.js embed script, and the signed-URL API route.",
+  "version": "2.0.0",
+  "description": "Embeddable MascotBot voice widget with conversation continuity \u2014 Next.js app serving the iframe page, /widget.js embed script, and the signed-URL API route. Client-side viseme inference via the MascotBot lipsync SDK.",
   "private": true,
   "scripts": {
+    "fetch-avatars": "node scripts/fetch-avatars.mjs",
+    "predev": "node scripts/fetch-avatars.mjs",
     "dev": "next dev --turbopack --port 3004",
+    "prebuild": "node scripts/fetch-avatars.mjs",
     "build": "next build",
     "start": "next start --port 3004",
     "lint": "next lint",
@@ -12,13 +15,14 @@
     "setup:agent": "node scripts/setup-agent.mjs"
   },
   "dependencies": {
-    "@elevenlabs/react": "^0.5.0",
-    "@mascotbot-sdk/react": "file:./mascotbot-sdk-react-0.1.9.tgz",
-    "@rive-app/react-webgl2": "4.24.0",
-    "@rive-app/webgl2": "2.32.0",
+    "@elevenlabs/client": "^0.9.2",
+    "@rive-app/react-webgl2": "4.28.4",
+    "@rive-app/webgl2": "2.37.6",
     "next": "16.1.0",
     "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "react-dom": "^19.2.3",
+    "@mascotbot/core": "0.3.0",
+    "@mascotbot/react": "0.3.0"
   },
   "devDependencies": {
     "@types/node": "^22",

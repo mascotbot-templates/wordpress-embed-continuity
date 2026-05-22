@@ -1,16 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useConversation } from "@elevenlabs/react";
+import {
+  useMascot,
+  createElementTap,
+  type ElementTap,
+} from "@mascotbot/react";
 import {
   Alignment,
   Fit,
-  MascotClient,
-  MascotProvider,
+  Mascot,
   MascotRive,
-  useMascot,
-  useMascotElevenlabs,
-} from "@mascotbot-sdk/react";
+  useMascotInputs,
+  useMascotRive,
+  useMascotPlayback,
+  useLipsyncStream,
+} from "@mascotbot/react/rive";
 import {
   appendTurn,
   clearResumePending,
@@ -28,6 +33,13 @@ import {
 import { buildResumeOverrides } from "@/lib/continuity-overrides";
 import { onParentMessage, postToParent } from "@/lib/parent-bridge";
 
+// ============================================================================
+// WIDGET CUSTOMIZATION CONFIG
+// ============================================================================
+// Customize the embedded NotionGuy avatar's appearance here. Applied once the
+// Rive file is loaded. Only inputs the .riv actually exposes are set
+// (has() is the authoritative gate).
+// ============================================================================
 const WIDGET_CUSTOMIZATION = {
   gender: 1,
   outline: 10,
@@ -41,9 +53,14 @@ const WIDGET_CUSTOMIZATION = {
   accessories_hue: 0,
   accessories_saturation: 0,
   accessories_brightness: 100,
-};
+} as const;
 
-const LIP_SYNC_CONFIG = {
+/**
+ * Natural-lip-sync preset — a STABLE module constant. A fresh object every
+ * render reinitializes the post-processor and breaks lip sync after the
+ * first audio chunk (the single most common integration bug).
+ */
+const NATURAL_LIP_SYNC_CONFIG = {
   minVisemeInterval: 40,
   mergeWindow: 60,
   keyVisemePreference: 0.6,
@@ -51,27 +68,32 @@ const LIP_SYNC_CONFIG = {
   similarityThreshold: 0.4,
   preserveCriticalVisemes: true,
   criticalVisemeMinDuration: 80,
-};
+} as const;
 
-// Delay before button appears after reveal fires (ms). Matches the
-// react-website-demo reference — long enough for the full Rive reveal
-// animation to play before the button pops in.
+// Widget Rive contract — verified against the bundled mascot_widget.riv
+// (artboard "Widget", state machine "mascotStateMachine"). This is the
+// embeddable "notion-guy-widget" avatar fetched by scripts/fetch-avatars.mjs.
+const WIDGET_ARTBOARD = "Widget";
+const WIDGET_STATE_MACHINE = "mascotStateMachine";
+
+// Delay before the call button appears after the reveal fires (ms).
 const BUTTON_APPEAR_AFTER_REVEAL = 4100;
 // Bounce animation duration (ms)
 const BUTTON_BOUNCE_DURATION = 450;
-// How long after Rive is ready we wait before firing the reveal trigger.
-// Matches the reference — lets the state machine fully initialize so the
-// trigger plays the animation reliably.
-const REVEAL_START_DELAY_MS = 1000;
 const SEEN_FLAG_KEY = "mascotbot-widget-revealed";
 
 /**
  * First visit = this tab hasn't seen the widget reveal yet AND we're not
  * resuming a prior call. Resumes always skip the reveal (the user already
- * saw the mascot on the previous page). Any subsequent visit within the
- * same tab also skips — the flag in sessionStorage persists across same-tab
+ * saw the mascot on the previous page). Any subsequent visit within the same
+ * tab also skips — the flag in sessionStorage persists across same-tab
  * navigations/reloads.
+ *
+ * NOTE: kept for parity with the original behaviour and for the eventual
+ * reveal-animation fix (see the reveal effect below). Currently every visit
+ * snaps straight to the revealed state.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function isFirstVisitInTab(): boolean {
   if (typeof window === "undefined") return false;
   try {
@@ -89,6 +111,14 @@ function markRevealed(): void {
   } catch {
     /* ignore */
   }
+}
+
+/** Minimal shape of the dynamically-imported @elevenlabs/client session. */
+interface ElevenLabsSession {
+  endSession: () => Promise<void>;
+  setMicMuted: (muted: boolean) => void;
+  sendContextualUpdate: (text: string) => void;
+  getId: () => string;
 }
 
 type CallState = "idle" | "connecting" | "resuming" | "connected";
@@ -141,15 +171,12 @@ function CallButton({
   onEnd: () => void;
   revealedAt: number | null;
 }) {
-  // Single source of truth for when the button is allowed to appear:
   // `revealedAt` is the timestamp the reveal animation started. We compute
   // the remaining time dynamically (not a fixed mount-time delay), so the
   // button pops in exactly `BUTTON_APPEAR_AFTER_REVEAL` ms later regardless
-  // of when this component mounted relative to the reveal.
-  //
-  // For subsequent/resume visits the parent pre-seeds `revealedAt` to a
-  // past timestamp, making `remaining` come out as 0 — same code path,
-  // button shows immediately.
+  // of when this component mounted relative to the reveal. For
+  // subsequent/resume visits the parent pre-seeds `revealedAt` to a past
+  // timestamp, making `remaining` come out as 0 — same code path.
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -168,8 +195,8 @@ function CallButton({
   const isBusy = isConnecting || isResuming;
 
   // Red when in an active-call-like state (connected OR resuming). Black when
-  // idle or first-time connecting. Resume-red makes it visually obvious to the
-  // user that the conversation is being preserved, not started fresh.
+  // idle or first-time connecting. Resume-red makes it visually obvious to
+  // the user that the conversation is being preserved, not started fresh.
   const backgroundColor = isEndCall || isResuming ? "#d03318" : "#1f1d22";
 
   const label = isEndCall
@@ -226,111 +253,85 @@ function WidgetContent({
   callState,
   onCallStateChange,
   actionsRef,
-  onReveal,
 }: {
   callState: CallState;
   onCallStateChange: (state: CallState) => void;
   actionsRef: React.MutableRefObject<WidgetActions>;
-  onReveal: () => void;
 }) {
+  // ── Co-located lip-sync pipeline (elevenlabs-avatar shape) ──
+  // ElevenLabs self-plays its agent voice through a hidden <audio
+  // srcObject=MediaStream>. We tap that element; the SDK computes visemes
+  // locally from the tapped stream. Never route ElevenLabs through
+  // createPCMStreamPlayer — that would play the voice twice.
+  const { client, status } = useMascot();
+  const playback = useMascotPlayback({
+    stream: true,
+    enableNaturalLipSync: true,
+    naturalLipSyncConfig: NATURAL_LIP_SYNC_CONFIG,
+  });
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  useLipsyncStream({
+    client,
+    playback,
+    source: { kind: "mediaStream", stream },
+  });
+
+  const { rive, isRiveLoaded } = useMascotRive();
+  const { custom, has } = useMascotInputs();
+  // useMascotInputs() is fresh-per-render — capture in a ref so the
+  // long-lived ElevenLabs onModeChange callback reads the current handle.
+  const customRef = useRef(custom);
+  customRef.current = custom;
+
   const [cachedUrl, setCachedUrl] = useState<string | null>(null);
-  const urlRefreshInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const urlRefreshInterval = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
   const userEndedRef = useRef(false);
   const resumeAttemptedRef = useRef(false);
-  // Tracks whether the current session was started via the resume path. The
-  // auto-kick-off contextual update only fires when this is true — we don't
-  // want the agent to get an extra nudge on a fresh call.
+  // Tracks whether the current session was started via the resume path.
   const wasResumeRef = useRef(false);
+  // Mirrors the high-level callState so async callbacks can branch without
+  // a stale closure (the @elevenlabs/client Conversation does not expose a
+  // public `status`, so we track it ourselves).
+  const callStateRef = useRef<CallState>(callState);
+  callStateRef.current = callState;
 
-  const { rive, customInputs } = useMascot();
+  const convoRef = useRef<ElevenLabsSession | null>(null);
+  const elTapRef = useRef<ElementTap | null>(null);
+  const teardownRef = useRef<null | (() => void)>(null);
 
-  const conversation = useConversation({
-    clientTools: {
-      navigateTo: (params: { page: string }) => {
-        const page = typeof params?.page === "string" ? params.page : null;
-        if (!page) return;
-        // Silent, immediate navigation. The agent's system prompt explicitly
-        // forbids speaking before/during/after navigateTo — speech is reserved
-        // for AFTER the new page loads, driven by the first_message override
-        // which is page-aware (see continuity-overrides.firstMessageForPage).
-        //
-        // We ALSO append a synthetic breadcrumb to the transcript buffer:
-        // because the agent said nothing during navigateTo, the raw transcript
-        // would contain only the user's request — and on the next resume the
-        // agent would see "user asked for /estimate" with no record of the
-        // nav ever happening, re-triggering navigateTo (an infinite reload
-        // loop the first version shipped with). The breadcrumb tells the
-        // resumed agent "you've already handled that".
-        appendTurn("ai", `[navigated silently to ${page}]`);
-        markResumePending();
-        postToParent({ type: "widget-navigate", page });
-      },
-      updateEstimateField: (params: { field: string; value: string }) => {
-        const field = typeof params?.field === "string" ? params.field : null;
-        const value = typeof params?.value === "string" ? params.value : null;
-        if (!field || value === null) return;
-        setFacts({ [field]: value });
-        postToParent({ type: "widget-form-update", field, value });
-      },
-      submitEstimate: async () => {
-        postToParent({ type: "widget-form-submit" });
-        return "Estimate submitted. The user can see a confirmation on their screen.";
-      },
-    },
-    onConnect: ({ conversationId }) => {
-      onCallStateChange("connected");
-      setConversationId(conversationId ?? null);
-      markActive(conversationId ?? null, window.location.pathname);
-
-      // Resume kick-off: the agent navigated silently, so on the new page it
-      // speaks FIRST via the firstMessage override (a page-aware literal line,
-      // see continuity-overrides.firstMessageForPage). Nothing else needed
-      // here — the sendContextualUpdate + sendUserMessage trick was tried
-      // and caused an infinite reload loop (the LLM interpreted the hidden
-      // path marker inside the user message as a new navigateTo request).
-      wasResumeRef.current = false;
-    },
-    onDisconnect: () => {
-      onCallStateChange("idle");
-      // If the user explicitly pressed "End call", clear the continuity buffer
-      // so the next page load starts fresh. If the disconnect was because the
-      // page is about to reload (agent navigation), leave the buffer intact —
-      // it will be rehydrated on the next page load.
-      if (userEndedRef.current) {
-        clearState();
-        userEndedRef.current = false;
+  // Consumer-owned Rive input writer. The SDK owns mouth visemes +
+  // is_speaking + stress; has() is the authoritative gate for everything we
+  // touch here.
+  const setInput = useCallback(
+    (name: string, v: number | boolean) => {
+      if (has(name)) {
+        (custom as Record<string, { value: unknown }>)[name].value =
+          v as never;
       }
     },
-    onError: (error: unknown) => {
-      console.error("[Widget] ElevenLabs error:", error);
-      onCallStateChange("idle");
-    },
-    onMessage: ({ message, source }) => {
-      if (!message) return;
-      appendTurn(source === "user" ? "user" : "ai", message);
-    },
-    onDebug: () => {},
-  });
+    [custom, has],
+  );
 
-  useMascotElevenlabs({
-    conversation,
-    debug: false,
-    gesture: true,
-    naturalLipSync: true,
-    naturalLipSyncConfig: LIP_SYNC_CONFIG,
-  });
-
+  // ── Signed-URL prefetch (instant connect on click) ──
   const getSignedUrl = useCallback(
-    async (dynamicVariables?: Record<string, string | number | boolean>) => {
+    async (
+      dynamicVariables?: Record<string, string | number | boolean>,
+    ): Promise<string> => {
       const response = await fetch("/api/get-signed-url", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache",
+        },
         body: JSON.stringify({ dynamicVariables: dynamicVariables ?? {} }),
         cache: "no-store",
       });
       if (!response.ok)
         throw new Error(`Failed to get signed url: ${response.statusText}`);
-      const data = (await response.json()) as { signedUrl: string };
+      const data = (await response.json()) as { signedUrl?: string };
+      if (!data.signedUrl) throw new Error("signed URL missing");
       return data.signedUrl;
     },
     [],
@@ -354,84 +355,277 @@ function WidgetContent({
     };
   }, [fetchAndCacheUrl]);
 
+  // ── Full teardown — runs on every end path ──
+  const teardown = useCallback(() => {
+    teardownRef.current?.();
+    teardownRef.current = null;
+    elTapRef.current?.close();
+    elTapRef.current = null;
+    void convoRef.current?.endSession().catch(() => {});
+    convoRef.current = null;
+    setStream(null); // detaches the worklet from the shared client
+  }, []);
+
+  // Stabilise the unmount cleanup (see react-website-demo bug: teardown
+  // identity can flip per render and re-fire endSession mid-call).
+  const teardownActionRef = useRef(teardown);
+  teardownActionRef.current = teardown;
+  useEffect(() => () => teardownActionRef.current?.(), []);
+
+  // The ElevenLabs client tools — silent navigation, form edits, submit.
+  // Identical semantics to the legacy @elevenlabs/react clientTools map.
+  const buildClientTools = useCallback(
+    () => ({
+      navigateTo: (params: { page: string }) => {
+        const page = typeof params?.page === "string" ? params.page : null;
+        if (!page) return;
+        // Silent, immediate navigation. The agent's system prompt explicitly
+        // forbids speaking before/during/after navigateTo — speech is
+        // reserved for AFTER the new page loads, driven by the firstMessage
+        // override which is page-aware
+        // (see continuity-overrides.firstMessageForPage).
+        //
+        // We ALSO append a synthetic breadcrumb to the transcript buffer:
+        // because the agent said nothing during navigateTo, the raw
+        // transcript would contain only the user's request — and on the next
+        // resume the agent would see "user asked for /estimate" with no
+        // record of the nav ever happening, re-triggering navigateTo (an
+        // infinite reload loop the first version shipped with). The
+        // breadcrumb tells the resumed agent "you've already handled that".
+        appendTurn("ai", `[navigated silently to ${page}]`);
+        markResumePending();
+        postToParent({ type: "widget-navigate", page });
+      },
+      updateEstimateField: (params: { field: string; value: string }) => {
+        const field = typeof params?.field === "string" ? params.field : null;
+        const value = typeof params?.value === "string" ? params.value : null;
+        if (!field || value === null) return;
+        setFacts({ [field]: value });
+        postToParent({ type: "widget-form-update", field, value });
+      },
+      submitEstimate: async () => {
+        postToParent({ type: "widget-form-submit" });
+        return "Estimate submitted. The user can see a confirmation on their screen.";
+      },
+    }),
+    [],
+  );
+
   const startConversation = useCallback(
     async (opts?: { resume?: boolean }) => {
+      if (status !== "ready") return;
+      if (callStateRef.current === "connected") return;
       try {
         // "resuming" = red RECONNECTING button, pre-toggled Rive inCall so
-        // the mascot starts in the in-call pose (not the idle/collapsed one).
-        // "connecting" = black CONNECTING button for fresh starts.
+        // the mascot starts in the in-call pose (not the idle/collapsed
+        // one). "connecting" = black CONNECTING button for fresh starts.
         onCallStateChange(opts?.resume ? "resuming" : "connecting");
-        const [, signedUrl] = await Promise.all([
+
+        // 1. SYNCHRONOUSLY before any await: create the tap (AudioContext
+        //    born running) and patch window.Audio so we can capture the
+        //    hidden <audio> @elevenlabs/client creates.
+        const tap = createElementTap();
+        elTapRef.current = tap;
+        setStream(tap.stream);
+
+        const w = window as unknown as {
+          Audio: typeof Audio;
+          __el?: HTMLAudioElement;
+        };
+        const OrigAudio = w.Audio;
+        w.Audio = function (...args: unknown[]) {
+          const el = new OrigAudio(...(args as []));
+          w.__el = el;
+          return el;
+        } as unknown as typeof Audio;
+
+        const [, baseUrl] = await Promise.all([
           navigator.mediaDevices.getUserMedia({ audio: true }),
           cachedUrl ? Promise.resolve(cachedUrl) : getSignedUrl(),
         ]);
-        if (!signedUrl) throw new Error("Missing signed URL");
+        if (!baseUrl) throw new Error("Missing signed URL");
 
+        const { Conversation } = await import("@elevenlabs/client");
+        const clientTools = buildClientTools();
+
+        // Shared callbacks for both fresh and resume sessions. onMessage
+        // feeds the continuity transcript buffer — THIS is the wiring that
+        // makes resume work (the buffer is later stitched into the resume
+        // system prompt by buildResumeOverrides).
+
+        // Per-turn gesture: fire `gesture` trigger on each agent-turn start
+        // (mascotbot-docs onModeChange recipe).
+        const onModeChange = ({ mode }: { mode: string }) => {
+          if (mode !== "speaking") return;
+          (customRef.current as Record<string, { fire?: () => void }>)
+            .gesture?.fire?.();
+        };
+        const onConnect = ({ conversationId }: { conversationId: string }) => {
+          onCallStateChange("connected");
+          setConversationId(conversationId ?? null);
+          markActive(conversationId ?? null, window.location.pathname);
+          // Resume kick-off: the agent navigated silently, so on the new
+          // page it speaks FIRST via the firstMessage override (a page-aware
+          // literal line). Nothing else needed here.
+          wasResumeRef.current = false;
+        };
+        const onDisconnect = () => {
+          onCallStateChange("idle");
+          // If the user explicitly pressed "End call", clear the continuity
+          // buffer so the next page load starts fresh. If the disconnect was
+          // because the page is about to reload (agent navigation), leave
+          // the buffer intact — it is rehydrated on the next page load.
+          if (userEndedRef.current) {
+            clearState();
+            userEndedRef.current = false;
+          }
+          teardown();
+        };
+        const onError = (message: string) => {
+          console.error("[Widget] ElevenLabs error:", message);
+          onCallStateChange("idle");
+          teardown();
+        };
+        const onMessage = ({
+          message,
+          source,
+        }: {
+          message: string;
+          source: "user" | "ai";
+        }) => {
+          if (!message) return;
+          appendTurn(source === "user" ? "user" : "ai", message);
+        };
+
+        let convo: ElevenLabsSession;
         if (opts?.resume) {
           const state = readState();
           if (state && state.transcript.length > 0) {
-            const { overrides, dynamicVariables } = buildResumeOverrides(state);
+            const { overrides, dynamicVariables } =
+              buildResumeOverrides(state);
             const freshUrl = await getSignedUrl(dynamicVariables);
-            // Set the resume flag BEFORE startSession so onConnect can read it
-            // and fire the continuity kick-off contextual update.
+            // Set the resume flag BEFORE startSession so onConnect can read
+            // it and fire the continuity kick-off contextual update.
             wasResumeRef.current = true;
-            await conversation.startSession({
+            convo = (await Conversation.startSession({
               signedUrl: freshUrl,
               overrides,
               dynamicVariables,
-            });
+              clientTools,
+              onModeChange,
+              onConnect,
+              onDisconnect,
+              onError,
+              onMessage,
+            })) as unknown as ElevenLabsSession;
+            convoRef.current = convo;
             // Clear the resume flag — this reload has been consumed. A later
-            // manual reload won't re-trigger resume until the agent navigates
-            // again.
+            // manual reload won't re-trigger resume until the agent
+            // navigates again.
             clearResumePending();
-            return;
+          } else {
+            // Resume was requested but there is nothing to resume — fall
+            // back to a clean fresh session.
+            wasResumeRef.current = false;
+            resetForFreshStart(window.location.pathname);
+            convo = (await Conversation.startSession({
+              signedUrl: baseUrl,
+              clientTools,
+              onModeChange,
+              onConnect,
+              onDisconnect,
+              onError,
+              onMessage,
+            })) as unknown as ElevenLabsSession;
+            convoRef.current = convo;
           }
+        } else {
+          // Fresh start (user clicked the button, not an agent-driven
+          // resume). Blow away any stale continuity data so a previous call
+          // doesn't leak into this one.
+          wasResumeRef.current = false;
+          resetForFreshStart(window.location.pathname);
+          convo = (await Conversation.startSession({
+            signedUrl: baseUrl,
+            clientTools,
+            onConnect,
+            onDisconnect,
+            onError,
+            onMessage,
+          })) as unknown as ElevenLabsSession;
+          convoRef.current = convo;
         }
 
-        // Fresh start (user clicked the button, not an agent-driven resume).
-        // Blow away any stale continuity data so a previous call doesn't leak
-        // into this one.
-        wasResumeRef.current = false;
-        resetForFreshStart(window.location.pathname);
-        await conversation.startSession({ signedUrl });
+        // 2. Poll for the hidden <audio> element and tap it cross-browser
+        //    (Safari has no captureStream). tap.stream is stable + silent
+        //    until this attach lands.
+        const hasAudioStream = (
+          el: HTMLAudioElement | undefined,
+        ): el is HTMLAudioElement =>
+          !!el &&
+          el.srcObject instanceof MediaStream &&
+          el.srcObject.getAudioTracks().length > 0;
+        let tries = 0;
+        const iv = window.setInterval(() => {
+          const el = w.__el;
+          if (hasAudioStream(el)) {
+            tap.attach(el);
+            tap.resume();
+            window.clearInterval(iv);
+          } else if (++tries > 100) {
+            window.clearInterval(iv);
+          }
+        }, 100);
+
+        teardownRef.current = () => {
+          window.clearInterval(iv);
+          w.Audio = OrigAudio;
+          // Null the stash so the next call doesn't latch onto this dead el.
+          w.__el = undefined;
+        };
       } catch (error) {
         console.error("[Widget] Failed to start:", error);
+        teardown();
         onCallStateChange("idle");
       }
     },
-    [conversation, cachedUrl, getSignedUrl, onCallStateChange],
+    [
+      status,
+      cachedUrl,
+      getSignedUrl,
+      buildClientTools,
+      onCallStateChange,
+      teardown,
+    ],
   );
 
   const stopConversation = useCallback(async () => {
     userEndedRef.current = true;
     markInactive();
-    await conversation.endSession();
-  }, [conversation]);
+    await convoRef.current?.endSession().catch(() => {});
+    teardown();
+    onCallStateChange("idle");
+  }, [teardown, onCallStateChange]);
 
   // Auto-resume on mount if sessionStorage says a call was active.
   useEffect(() => {
     if (resumeAttemptedRef.current) return;
     if (!isResumable()) return;
+    if (status !== "ready") return;
     resumeAttemptedRef.current = true;
-    startConversation({ resume: true });
-  }, [startConversation]);
+    void startConversation({ resume: true });
+  }, [status, startConversation]);
 
-  // Keep the Rive `inCall` input in sync with the high-level callState (the
-  // single source of truth maintained in the parent). Anything that isn't
-  // "idle" should render as in-call — that covers connecting, resuming, and
-  // connected without races.
-  //
-  // Using callState (not conversation.status) matters on resume page loads:
-  // callState is initialized synchronously to "resuming" via useState lazy
-  // init, so this effect fires with the correct value on the very first
-  // render. conversation.status, by contrast, stays "disconnected" until
-  // startConversation's awaits complete — which caused the idle-pose flash
-  // the user reported.
+  // Keep the Rive `inCall` input in sync with the high-level callState.
+  // Anything that isn't "idle" should render as in-call — that covers
+  // connecting, resuming, and connected without races. Using callState (not
+  // a connection status) matters on resume page loads: callState is
+  // initialized synchronously to "resuming" via useState lazy init, so this
+  // effect fires with the correct value on the very first render.
   useEffect(() => {
-    if (!customInputs?.inCall) return;
-    customInputs.inCall.value = callState !== "idle";
-  }, [callState, customInputs]);
-
+    if (!isRiveLoaded) return;
+    setInput("inCall", callState !== "idle");
+  }, [isRiveLoaded, callState, setInput]);
 
   // Listen for parent-side messages (current page, form edits from user).
   useEffect(() => {
@@ -440,64 +634,83 @@ function WidgetContent({
         setCurrentPage(msg.pathname);
       } else if (msg.type === "widget-form-user-edit") {
         setFacts({ [msg.field]: msg.value });
-        if (conversation.status === "connected") {
-          conversation.sendContextualUpdate(
+        if (callStateRef.current === "connected") {
+          convoRef.current?.sendContextualUpdate(
             `User edited ${msg.field} to "${msg.value}".`,
           );
         }
       }
     });
     return unsubscribe;
-  }, [conversation]);
+  }, []);
 
   // Apply widget customization once Rive is loaded.
   useEffect(() => {
-    if (!customInputs) return;
-    Object.entries(WIDGET_CUSTOMIZATION).forEach(([key, value]) => {
-      if (customInputs[key]) customInputs[key].value = value;
-    });
-    if (customInputs.character)
-      customInputs.character.value = WIDGET_CUSTOMIZATION.gender;
-  }, [customInputs]);
+    if (!isRiveLoaded) return;
+    for (const [key, value] of Object.entries(WIDGET_CUSTOMIZATION)) {
+      setInput(key, value as number | boolean);
+    }
+    // Legacy alias: "character" mirrors "gender".
+    setInput("character", WIDGET_CUSTOMIZATION.gender);
+  }, [isRiveLoaded, setInput]);
 
-  // Fire reveal trigger — once only. Matches the react-website-demo
-  // reference exactly: wait for both `rive` and `customInputs` to be truthy
-  // (meaning the Rive file AND the SDK's state machine input wrappers are
-  // ready), settle for REVEAL_START_DELAY_MS, then fire the trigger AND
-  // call onReveal() in the same setTimeout callback so the button's clock
-  // starts at the exact timestamp the reveal animation begins.
+  // Reveal handling. The reveal trigger is fired directly on the raw Rive
+  // state machine inputs (going through the inputs API silently no-ops with
+  // the current SDK/Rive combo). For now ALL visits (including first) skip
+  // the reveal animation and snap straight to the fully revealed state.
   //
-  // This effect only fires reveal on the first visit. Subsequent visits and
-  // resumes already have isRevealed=true set synchronously in onRiveLoad
-  // (no animation, no flash), and the parent pre-seeds `revealedAt` to a
-  // past timestamp so the button shows immediately.
-  const revealFired = useRef(false);
+  // TODO(reveal-animation): re-enable the first-visit reveal play once the
+  // .riv's reveal transition responds to the trigger from JS. The structure
+  // (isFirstVisitInTab / markRevealed / SEEN_FLAG_KEY) is left intact for
+  // the eventual fix.
+  const revealAppliedRef = useRef(false);
   useEffect(() => {
-    if (!rive || !customInputs || revealFired.current) return;
-    if (!isFirstVisitInTab()) return;
-    const timer = setTimeout(() => {
-      if (revealFired.current) return;
-      revealFired.current = true;
-      customInputs?.reveal?.fire?.();
-      markRevealed();
-      onReveal();
-    }, REVEAL_START_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [rive, customInputs, onReveal]);
+    if (!isRiveLoaded || !rive || revealAppliedRef.current) return;
+    revealAppliedRef.current = true;
+    markRevealed();
 
-  // Signal widget-ready once Rive has loaded. The mascot appears instantly
-  // because `isRevealed` is set to true on load (see MascotClient onRiveLoad).
+    const inputs =
+      (
+        rive as unknown as {
+          stateMachineInputs?: (
+            sm: string,
+          ) => Array<{ name: string; value: unknown }> | undefined;
+        }
+      ).stateMachineInputs?.(WIDGET_STATE_MACHINE) ?? undefined;
+    const setRaw = (name: string, value: boolean) => {
+      const input = inputs?.find((i) => i.name === name);
+      if (input) {
+        try {
+          input.value = value;
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+
+    // Snap straight to revealed. On resume also pre-toggle inCall so the
+    // mascot is in its in-call pose on the very first rendered frame (no
+    // idle-pose flash between Rive load and React's useEffect running).
+    setInput("isRevealed", true);
+    setRaw("isRevealed", true);
+    if (isResumable()) {
+      setInput("inCall", true);
+      setRaw("inCall", true);
+    }
+  }, [isRiveLoaded, rive, setInput]);
+
+  // Signal widget-ready once Rive has loaded.
   const readyFiredRef = useRef(false);
   useEffect(() => {
-    if (!rive || readyFiredRef.current) return;
+    if (!isRiveLoaded || readyFiredRef.current) return;
     readyFiredRef.current = true;
     postToParent({ type: "widget-ready" });
-  }, [rive]);
+  }, [isRiveLoaded]);
 
   useEffect(() => {
     actionsRef.current = {
-      start: () => startConversation(),
-      end: stopConversation,
+      start: () => void startConversation(),
+      end: () => void stopConversation(),
     };
   }, [startConversation, stopConversation, actionsRef]);
 
@@ -514,13 +727,11 @@ export function PersistentWidget() {
     if (typeof window === "undefined") return "idle";
     return isResumable() ? "resuming" : "idle";
   });
-  // `revealedAt` drives when the call button appears. First visit: null
-  // until the reveal-trigger useEffect fires it. Subsequent/resume:
-  // pre-seed to a past timestamp so the button's elapsed-time math yields
-  // 0 remaining delay and it shows immediately.
-  const [revealedAt, setRevealedAt] = useState<number | null>(() => {
+  // `revealedAt` drives when the call button appears. With the reveal
+  // animation temporarily disabled, we seed this to a past timestamp
+  // unconditionally so the button shows immediately on every visit.
+  const [revealedAt] = useState<number | null>(() => {
     if (typeof window === "undefined") return null;
-    if (isFirstVisitInTab()) return null;
     return Date.now() - BUTTON_APPEAR_AFTER_REVEAL - 10;
   });
   const actionsRef = useRef<WidgetActions>({ start: () => {}, end: () => {} });
@@ -534,7 +745,7 @@ export function PersistentWidget() {
   }, []);
 
   return (
-    <MascotProvider>
+    <>
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
@@ -558,18 +769,18 @@ export function PersistentWidget() {
         }}
       >
         <div className="w-full h-full">
-          <MascotClient
+          <Mascot
             src="/mascot_widget.riv"
-            artboard="Widget"
-            shouldDisableRiveListeners={true}
+            artboard={WIDGET_ARTBOARD}
+            stateMachine={WIDGET_STATE_MACHINE}
+            // The SDK owns mouth visemes + is_speaking + stress — declare
+            // ONLY consumer-owned inputs here (rive-coexistence contract).
             inputs={[
-              "gesture",
-              "is_speaking",
               "inCall",
               "isRevealed",
               "reveal",
               "gender",
-              "character",
+              "character", // legacy alias for gender
               "outline",
               "colourful",
               "flip",
@@ -583,43 +794,14 @@ export function PersistentWidget() {
               "accessories_brightness",
             ]}
             layout={{ fit: Fit.Contain, alignment: Alignment.BottomRight }}
-            // @ts-ignore — stateMachine prop added to SDK but not in .d.ts yet
-            stateMachine="mascotStateMachine"
-            onRiveLoad={(rive: any) => {
-              // We ONLY handle the subsequent-visit / resume fast path
-              // here — snap isRevealed=true and (on resume) inCall=true on
-              // the raw state machine inputs so the mascot appears fully in
-              // its final pose on the very first rendered frame, no flash.
-              //
-              // The first-visit animated reveal is handled by a useEffect
-              // in WidgetContent (matching the react-website-demo
-              // reference) — it waits for customInputs to be ready, settles
-              // for 1000ms, then fires the trigger and calls onReveal in
-              // the same tick to start the button's clock.
-              if (isFirstVisitInTab()) return;
-              const inputs = rive?.stateMachineInputs?.("mascotStateMachine");
-              if (!inputs) return;
-              const setBool = (name: string, value: boolean) => {
-                const input = inputs.find((i: any) => i.name === name);
-                if (!input) return;
-                try {
-                  input.value = value;
-                } catch {
-                  /* ignore */
-                }
-              };
-              setBool("isRevealed", true);
-              if (isResumable()) setBool("inCall", true);
-            }}
           >
             <WidgetContent
               callState={callState}
               onCallStateChange={setCallState}
               actionsRef={actionsRef}
-              onReveal={() => setRevealedAt(Date.now())}
             />
-            <MascotRive showLoadingSpinner={false} />
-          </MascotClient>
+            <MascotRive />
+          </Mascot>
         </div>
 
         <div
@@ -640,6 +822,6 @@ export function PersistentWidget() {
           />
         </div>
       </div>
-    </MascotProvider>
+    </>
   );
 }

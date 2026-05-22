@@ -6,6 +6,8 @@
 
 ## What This Demonstrates
 
+- **Client-side viseme inference** — `@mascotbot/{core,react}` computes visemes in the browser; the widget taps the ElevenLabs `<audio>` element via `createElementTap()` and feeds it to `useLipsyncStream()`. No MascotBot server is in the audio path
+- **Plain ElevenLabs signed URL** — `/api/get-signed-url` mints a single-use Conversational-AI signed URL with the server-side `xi-api-key`; there is no `api.mascot.bot` proxy
 - **Drop-in embed** — one `<script>` tag, no plugin, no theme edits, no React on the host page
 - **Cross-reload continuity** — the conversation persists through full page reloads via a transcript buffer in the widget iframe's `sessionStorage`, stitched back into the agent via `overrides.agent.prompt.prompt` + a page-aware `firstMessage`
 - **Silent agent-driven navigation** — when the agent calls `navigateTo`, it stays quiet. The browser hard-reloads, and the widget speaks the next natural question on arrival — no "okay, continuing" fluff
@@ -19,9 +21,29 @@
 
 - Node.js 18+
 - pnpm 9+
+- A MascotBot API key from <https://app.mascot.bot/api-keys>
+  - `mascot_dev_…` — works on `localhost` / `127.0.0.1` / `*.localhost` (no billing)
+  - `mascot_pub_…` — for your allow-listed production domains
 - An [ElevenLabs](https://elevenlabs.io) account (agent + API key)
-- A [Mascot Bot](https://app.mascot.bot) account (proxy key + SDK `.tgz` + `.riv`)
 - ElevenLabs CLI: `npm install -g @elevenlabs/cli` (used for agent setup and tests)
+
+## SDK install (private npm registry)
+
+The MascotBot lipsync SDK ships from the private registry `https://npm.mascot.bot/`. A `.npmrc` is already committed in the `widget/` app; it reads the token from the `MASCOT_NPM_TOKEN` environment variable, so no secret is checked in.
+
+Before installing, export the **same** `mascot_` key you use as the lipsync license key:
+
+```bash
+export MASCOT_NPM_TOKEN=mascot_dev_xxxxxxxxxxxxxx
+```
+
+There is no `.tgz` to download and no manual SDK step — `pnpm install:all` pulls `@mascotbot/core` and `@mascotbot/react` from the registry.
+
+## Avatars
+
+The Rive avatar file is **auto-downloaded** from the public, no-auth MascotBot Avatars API by `widget/scripts/fetch-avatars.mjs`, which runs automatically on the widget app's `predev` and `prebuild`. You do **not** supply any paid `.riv` file.
+
+This template uses the `notion-guy-widget` avatar (artboard `Widget`, state machine `mascotStateMachine`) — the embeddable widget flavor. The downloaded `widget/public/mascot_widget.riv` stays gitignored.
 
 ## Quick Start
 
@@ -39,25 +61,13 @@ wordpress-embed-continuity/
 git clone https://github.com/mascotbot-templates/wordpress-embed-continuity.git
 cd wordpress-embed-continuity
 
-# Install dependencies for both apps
+export MASCOT_NPM_TOKEN=mascot_dev_xxxxxxxxxxxxxx   # same as your lipsync key
+
+# Install dependencies for both apps (pulls the SDK from the private registry)
 pnpm install:all
 ```
 
-### 2. Add private files (widget app only)
-
-```bash
-# MascotBot SDK — download from your Mascot Bot dashboard
-cp /path/to/mascotbot-sdk-react-0.1.9.tgz widget/
-
-# Rive animation file — download from your Mascot Bot dashboard
-# Must be a Widget-type .riv with `reveal` trigger + `isRevealed`/`inCall` bool inputs
-cp /path/to/mascot_widget.riv widget/public/
-
-# Re-install so pnpm links the .tgz
-pnpm --filter widget install
-```
-
-### 3. Provision the ElevenLabs agent (one command)
+### 2. Provision the ElevenLabs agent (one command)
 
 This creates the three client tools and the agent with continuity overrides enabled:
 
@@ -67,7 +77,7 @@ ELEVENLABS_API_KEY=sk_your_key pnpm --filter widget setup:agent
 
 Copy the `ELEVENLABS_AGENT_ID` it prints.
 
-### 4. Configure environment
+### 3. Configure environment
 
 ```bash
 cp widget/.env.example widget/.env.local
@@ -77,14 +87,14 @@ cp demo-site/.env.example demo-site/.env.local
 Fill in `widget/.env.local`:
 
 ```
-MASCOT_BOT_API_KEY=your_mascotbot_key
+NEXT_PUBLIC_MASCOT_KEY=mascot_dev_xxxxxxxxxxxxxx
 ELEVENLABS_API_KEY=sk_your_elevenlabs_key
-ELEVENLABS_AGENT_ID=agent_xxx        # from step 3
+ELEVENLABS_AGENT_ID=agent_xxx        # from step 2
 ```
 
 `demo-site/.env.local` stays at its default (`NEXT_PUBLIC_WIDGET_URL=http://localhost:3004`) for local dev.
 
-### 5. Run
+### 4. Run
 
 ```bash
 pnpm dev        # spawns both apps — widget on :3004, demo-site on :3005
@@ -92,32 +102,23 @@ pnpm dev        # spawns both apps — widget on :3004, demo-site on :3005
 
 Open [http://localhost:3005](http://localhost:3005). Click the voice button bottom-right, say *"I need a moving estimate"* — the agent goes silent, the page reloads to `/estimate`, and the agent's next line is *"What's your name?"* with no audible seam.
 
-## Private Files You Need
-
-### MascotBot SDK
-
-- **File:** `mascotbot-sdk-react-0.1.9.tgz`
-- **Location:** `widget/`
-- **Get it:** [Mascot Bot dashboard](https://app.mascot.bot)
-
-### Rive Animation File
-
-- **File:** `mascot_widget.riv`
-- **Location:** `widget/public/mascot_widget.riv`
-- **Get it:** [Mascot Bot dashboard](https://app.mascot.bot)
-- **Required inputs on the `mascotStateMachine`:** `reveal` (trigger), `isRevealed` (bool), `inCall` (bool), `is_speaking` (bool), `gesture` (trigger), plus customization inputs (`gender`, `outline`, `colourful`, etc.)
-
-Both files are subscription-only — they're gitignored and never published.
-
 ## Environment Variables
+
+This template is **two apps**, each with its own `.env.example`:
+
+```bash
+cp widget/.env.example      widget/.env.local       # API keys live here
+cp demo-site/.env.example   demo-site/.env.local    # widget URL lives here
+```
 
 ### `widget/.env.local`
 
 | Variable | Description | Required |
 |---|---|---|
-| `ELEVENLABS_AGENT_ID` | Agent id with `prompt` + `first_message` overrides enabled | Yes |
-| `ELEVENLABS_API_KEY` | ElevenLabs API key for signed URL minting | Yes |
-| `MASCOT_BOT_API_KEY` | Mascot Bot proxy key (mints signed URLs with viseme injection) | Yes |
+| `NEXT_PUBLIC_MASCOT_KEY` | Browser-safe MascotBot lipsync key (`mascot_dev_…` for localhost, `mascot_pub_…` for production). Inlined into the client bundle. | Yes |
+| `ELEVENLABS_API_KEY` | ElevenLabs API key. Server-side only — used by `/api/get-signed-url`. | Yes |
+| `ELEVENLABS_AGENT_ID` | ElevenLabs Conversational-AI Agent ID with `prompt` + `first_message` overrides enabled (from the setup script). | Yes |
+| `MASCOT_NPM_TOKEN` | Same `mascot_` key, exported in your shell (and set on your host) so `pnpm install` can authenticate to `https://npm.mascot.bot/`. Not read at runtime. | Install only |
 
 ### `demo-site/.env.local`
 
@@ -139,9 +140,10 @@ widget.js (vanilla JS embed script, ~7 KB)
    │ - listens for widget-navigate postMessage → window.location.href
    ▼
 iframe: Next.js widget app (widget.yourdomain.com)
-   │ - React component tree with MascotBot SDK + @elevenlabs/react
+   │ - React component tree: MascotBot lipsync SDK + @elevenlabs/client
+   │ - createElementTap() taps the ElevenLabs <audio>; visemes inferred in-browser
    │ - sessionStorage scoped to widget origin (survives parent reloads)
-   │ - /api/get-signed-url proxies to api.mascot.bot for signed WebSocket URL
+   │ - /api/get-signed-url mints an ElevenLabs signed URL (xi-api-key, server-side)
    ▼
 ElevenLabs Conversational AI
    - prompt + first_message overrides enabled
@@ -262,15 +264,14 @@ These are the real bugs we hit building this. You'll likely hit analogous ones i
 
 Deploy `widget/` to Vercel (or any Next.js host). Set env vars in the dashboard — **do not commit them**:
 
-- `ELEVENLABS_AGENT_ID`
+- `NEXT_PUBLIC_MASCOT_KEY` — use a `mascot_pub_…` key allow-listed to the widget's production origin
 - `ELEVENLABS_API_KEY`
-- `MASCOT_BOT_API_KEY`
+- `ELEVENLABS_AGENT_ID`
+- `MASCOT_NPM_TOKEN` — set as a **build-time** environment variable so `pnpm install` can authenticate to the private registry `https://npm.mascot.bot/`
 
 Give it a memorable subdomain: `widget.yourdomain.com`.
 
-**Heads up:** The `.tgz` SDK and `.riv` animation are gitignored (subscription-only content). For Vercel to `pnpm install` the widget, you'll either need to:
-- Commit `.tgz` + `.riv` into a **private** fork of this repo that Vercel pulls from, OR
-- Host the SDK `.tgz` at a private URL and reference it from `package.json`, plus serve the `.riv` from the same private origin
+The SDK is pulled from the private registry at install time (no `.tgz` to commit), and the avatar `.riv` is auto-fetched from the public Avatars API on `prebuild` (gitignored, never committed) — nothing private has to be bundled into the repo.
 
 ### 2. Install on any WordPress (or any) site
 

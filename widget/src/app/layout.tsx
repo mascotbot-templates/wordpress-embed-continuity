@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   title: "MascotBot Voice Widget",
@@ -12,8 +13,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html
+      lang="en"
+      style={{ background: "transparent", backgroundColor: "transparent" }}
+    >
+      <body
+        style={{ background: "transparent", backgroundColor: "transparent" }}
+      >
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }
